@@ -1,0 +1,98 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+from compare_utility import print_results, plot_trajectories, get_compute_accuracy
+
+# -----------------------------------------------------------------------
+# Parameters
+# -----------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------
+# deriv_fn: this is your f(S), but now takes only state as argument
+# (n0 and alpha are captured from the outer scope)
+# -----------------------------------------------------------------------
+
+
+def deriv_fn(state):
+    x, y, px, py = state
+    n = n0 + alpha * y
+    return np.array([px / n, py / n, 0.0, alpha])
+
+# -----------------------------------------------------------------------
+# Integrators — ALL follow the required signature:
+# my_integrator(state, deriv_fn, dt) -> new_state
+# -----------------------------------------------------------------------
+
+
+def my_euler(state, deriv_fn, dt):
+    return state + deriv_fn(state) * dt
+
+
+def my_rk4(state, deriv_fn, dt):
+    k1 = deriv_fn(state)
+    k2 = deriv_fn(state + 0.5 * dt * k1)
+    k3 = deriv_fn(state + 0.5 * dt * k2)
+    k4 = deriv_fn(state + dt * k3)
+    return state + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+
+
+def my_adaptive(state, deriv_fn, dt):
+    x, y, px, py = state
+
+    # Eval 1: call deriv_fn to get force at current state
+    # deriv_fn(state)[3] gives dpy/ds = alpha dynamically
+    # (don't hardcode alpha — utility may use different params)
+    dS = deriv_fn(state)
+    dpy_ds = dS[3]   # this is alpha, extracted from deriv_fn
+
+    # half kick on py (px unchanged since dpx/ds = 0)
+    py_half = py + 0.5 * dpy_ds * dt
+
+    # Eval 2: drift rates using half-kicked momenta at current position
+    state_half = np.array([x, y, px, py_half])
+    dS_half = deriv_fn(state_half)
+
+    # full drift
+    x_new = x + dS_half[0] * dt   # px / n(y) * dt
+    y_new = y + dS_half[1] * dt   # py_half / n(y) * dt
+
+    # second half kick (force is constant so same dpy_ds)
+    py_new = py_half + 0.5 * dpy_ds * dt
+
+    return np.array([x_new, y_new, px, py_new])
+
+
+# -----------------------------------------------------------------------
+# Run the utility exactly as shown in the README
+# -----------------------------------------------------------------------
+results = print_results(
+    my_euler, my_rk4, my_adaptive,
+    dt=2.0,
+    x_max=500.0,
+    labels=['Euler', 'RK4', 'Leapfrog'],
+)
+
+plot_trajectories(results)
+
+data = get_compute_accuracy(results)
+
+plt.show()
+# print(data)
+names = [d['name'] for d in data]
+evals = [d['n_evals'] for d in data]
+errors = [d['rmse'] for d in data]
+
+colors = ['red', 'blue', 'green']
+
+plt.figure()
+for i in range(len(names)):
+    plt.scatter(evals[i], errors[i], label=names[i],
+                color=colors[i], s=100, zorder=3)
+
+plt.xlabel('Compute (derivative evaluations)')
+plt.ylabel('RMSE (px)')
+plt.title('Accuracy vs Compute')
+plt.legend()
+plt.tight_layout()
+plt.show()
